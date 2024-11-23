@@ -1,5 +1,4 @@
-This is a home-made game tetris that I made with pygame.
+This is a revised version of `https://github.com/RadoTheProgrammer/tetris`. I aim to make some improvements in both code and functionality.
 
-1. Clone the repo: `git clone https://github.com/RadoTheProgrammer/tetris`
-2. install the dependencies: `pip install pygame numpy`
-3. run the file `main.py`
+1. Clone the repo: `git clone https://github.com/nmclaren/tetris`
+2. Run with uv "uv run main.py"
