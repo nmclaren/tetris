@@ -28,7 +28,7 @@ import numpy as np
 import random
 import time
 import sys
-from pieces.shapes import PIECES as iPIECES
+from pieces.shapes import PIECES
 
 class TetrisGame:
     _instance = None
@@ -54,8 +54,8 @@ class TetrisGame:
             7: "maroon"
         }
 
-        self.PIECES = iPIECES
-        self.NPIECES = tuple(self.PIECES.keys())
+        self.GAME_PIECES = PIECES
+        self.NPIECES = tuple(self.GAME_PIECES.keys())
         self.GRID_CUBE_SIZE = (10, 20)  # x, y
         self.NUMBER_NEXT_PIECES = 3
 
@@ -101,7 +101,7 @@ class TetrisGame:
             cube_surface.fill(color)
             self.cube_surfaces[piece_id] = cube_surface
 
-            piece_cubes = self.PIECES[piece_id]
+            piece_cubes = self.GAME_PIECES[piece_id]
             xs, ys = zip(*piece_cubes)
             min_x, min_y = min(xs), min(ys)
             x_dim, y_dim = max(xs) - min_x + 1, max(ys) - min_y + 1
@@ -184,7 +184,7 @@ class TetrisGame:
             self.next_pieces.append(random.choice(self.NPIECES))
             self.holded_used = False
         self.cpiece_pos = [int(self.GRID_CUBE_SIZE[0]) // 2, 0]
-        self.cpiece_cubes = self.PIECES[self.cpiece_id]
+        self.cpiece_cubes = self.GAME_PIECES[self.cpiece_id]
         self.holded_used = False
 
         while True:
