@@ -23,396 +23,315 @@ don't worry if it's not like the original, it would be even better !
 """
 
 
-
 import pygame
 import numpy as np
 import random
 import time
 import sys
+from pieces.shapes import PIECES as iPIECES
 
-pygame.init()
+class TetrisGame:
+    _instance = None
 
-COLORS = {
-    1:"blue", 
-    2:"red", 
-    3:"green", 
-    4:"yellow",
-    5:"cyan",
-    6:"magenta",
-    7:"maroon"
-}
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(TetrisGame, cls).__new__(cls, *args, **kwargs)
+        return cls._instance
 
-PIECES = { #x,y
-    1:((-1,0),(0,0),(1,0),(2,0)), #I
-    #1:((-1,-1),(0,-1),(1,-1),(2,-1)), #I to test too much up
-    2:((0,0),(0,1),(1,0),(1,1)), #O
-    3:((0,0),(0,1),(1,0),(-1,1)), #S
-    4:((0,0),(0,1),(-1,0),(1,1)), #Z
-    5:((0,0),(-1,0),(1,0),(-1,1)), #L
-    6:((0,0),(-1,0),(1,0),(1,1)), #J
-    7:((0,0),(-1,0),(1,0),(0,1)) #T
-    #6:((0,0),(0,1),(-1,1))
-}
-NPIECES = tuple(PIECES.keys())
-GRID_CUBE_SIZE = (10,20) #x,y
-NUMBER_NEXT_PIECES = 3
+    def __init__(self):
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+        self._initialized = True
 
-DELAY_CONTROL_H = 0.1 # to go left or right
-DELAY_CONTROL_V = 0.1 # to go down
-CLEAR_LINES_POINTS = {
-    0: 0,
-    1:100,
-    2:300,
-    3:500,
-    4:800
-}
-LINES_CLEARED_BY_LEVEL = 10
+        pygame.init()
+        self.COLORS = {
+            1: "blue",
+            2: "red",
+            3: "green",
+            4: "yellow",
+            5: "cyan",
+            6: "magenta",
+            7: "maroon"
+        }
 
-# DESIGN SETTINGS
-CUBE_SIZE = 30
-GRID_POS = (CUBE_SIZE*4+20,0)
-NEXT_POS=(GRID_CUBE_SIZE[0]*CUBE_SIZE+GRID_POS[0]+10, 10)
-NEXT_BETWEEN_TEXT_PIECES=20
-NEXT_BETWEEN_PIECES=20
-HOLD_POS = (10,10)
-HOLD_SPACE_TEXT_PIECES=20
-HOLD_SPACE_PIECES=20
-SCREEN_SIZE = ((GRID_CUBE_SIZE[0]+8)*CUBE_SIZE+40,GRID_CUBE_SIZE[1]*CUBE_SIZE)
-SCORE_POS = (10,SCREEN_SIZE[1]-10)
-SCORE_SPACE_PIECES=20
+        self.PIECES = iPIECES
+        self.NPIECES = tuple(self.PIECES.keys())
+        self.GRID_CUBE_SIZE = (10, 20)  # x, y
+        self.NUMBER_NEXT_PIECES = 3
 
-SCREEN_COLOR = "darkgray"
-GRID_COLOR = "black"
-CUBES_LIMIT_COLOR = "white"
-NEXT_STYLE=pygame.font.Font(None, 24),True,"white"
-SCORE_STYLE=pygame.font.Font(None, 24),True,"white"
-HOLD_STYLE=pygame.font.Font(None, 24),True,"white"
+        self.DELAY_CONTROL_H = 0.1  # to go left or right
+        self.DELAY_CONTROL_V = 0.1  # to go down
+        self.CLEAR_LINES_POINTS = {
+            0: 0,
+            1: 100,
+            2: 300,
+            3: 500,
+            4: 800
+        }
+        self.LINES_CLEARED_BY_LEVEL = 10
 
+        # DESIGN SETTINGS
+        self.CUBE_SIZE = 30
+        self.GRID_POS = (self.CUBE_SIZE * 4 + 20, 0)
+        self.NEXT_POS = (self.GRID_CUBE_SIZE[0] * self.CUBE_SIZE + self.GRID_POS[0] + 10, 10)
+        self.NEXT_BETWEEN_TEXT_PIECES = 20
+        self.NEXT_BETWEEN_PIECES = 20
+        self.HOLD_POS = (10, 10)
+        self.HOLD_SPACE_TEXT_PIECES = 20
+        self.HOLD_SPACE_PIECES = 20
+        self.SCREEN_SIZE = ((self.GRID_CUBE_SIZE[0] + 8) * self.CUBE_SIZE + 40, self.GRID_CUBE_SIZE[1] * self.CUBE_SIZE)
+        self.SCORE_POS = (10, self.SCREEN_SIZE[1] - 10)
+        self.SCORE_SPACE_PIECES = 20
 
+        self.SCREEN_COLOR = "darkgray"
+        self.GRID_COLOR = "black"
+        self.CUBES_LIMIT_COLOR = "white"
+        self.NEXT_STYLE = pygame.font.Font(None, 24), True, "white"
+        self.SCORE_STYLE = pygame.font.Font(None, 24), True, "white"
+        self.HOLD_STYLE = pygame.font.Font(None, 24), True, "white"
 
-##
+        self.debug_mode = hasattr(sys, 'gettrace') and sys.gettrace()
+        self.printd = print if self.debug_mode else lambda *x, **y: None
 
-debug_mode = hasattr(sys, 'gettrace') and sys.gettrace()
-#print(sys.gettrace())
-printd = print if debug_mode else lambda *x, **y:None
-def render(style,text):
-    return style[0].render(text, *style[1:])
-def flip_coords(x,y):
-    """convert UI coords to numpy coords"""
-    return y,x
+        self.grid = np.zeros(self.flip_coords(*self.GRID_CUBE_SIZE))
+        self.cube_surfaces = {}
+        self.pieces_surfaces = {}
+        for piece_id, color in self.COLORS.items():
+            cube_surface = pygame.Surface((self.CUBE_SIZE, self.CUBE_SIZE))
+            cube_surface.fill(color)
+            self.cube_surfaces[piece_id] = cube_surface
 
-def update_speed_moving():
-    global speed_moving
-    if level<=10:
-        speed_moving = 1-0.1*(level-1)
-    else:
-        speed_moving = 0.05
-    #speed_moving = 0.5
-    
-def new_piece(setup_cpiece_id=True):
-    global cpiece_id, cpiece_pos, cpiece_cubes, grid, holded_used, score, lines, level, level_old
-    
-    #clear lines
-    lines_cleared_piece = 0
-    for nline in range(GRID_CUBE_SIZE[1]):
-        if np.all(grid[nline]):
-            grid = np.delete(grid,nline,axis=0)
-            #print(cubes)
-            grid = np.vstack((empty_line, grid))
-            lines_cleared_piece += 1
-            #print(grid)
-            pass
-    
-    #lines_cleared_level+=lines_cleared_piece
-    lines+=lines_cleared_piece
-    level = lines//LINES_CLEARED_BY_LEVEL + 1
-    if level != level_old: # that means level up
-        level_old = level
-        printd("LEVEL UP")
-        update_speed_moving()
-    score += CLEAR_LINES_POINTS[lines_cleared_piece]
-    
-    if setup_cpiece_id:
-        cpiece_id = next_pieces.pop(0)
-        next_pieces.append(random.choice(NPIECES))
-        holded_used = False
-    cpiece_pos = [int(GRID_CUBE_SIZE[0])//2, 0] #x,y
-    cpiece_cubes = PIECES[cpiece_id]  
-    holded_used = False
-    #print("w")  
-    while True:
-        
+            piece_cubes = self.PIECES[piece_id]
+            xs, ys = zip(*piece_cubes)
+            min_x, min_y = min(xs), min(ys)
+            x_dim, y_dim = max(xs) - min_x + 1, max(ys) - min_y + 1
+            piece_cubes = tuple((x - min_x, y - min_y) for x, y in piece_cubes)
+            piece_size = (self.CUBE_SIZE * x_dim, self.CUBE_SIZE * y_dim)
+            piece_surface = pygame.Surface(piece_size, pygame.SRCALPHA)
+            piece_surface.fill((0, 0, 0, 0))
 
-        try: 
-        #print(r)
-            if add_cpiece_to_grid(): # successful
-                return
-            else: # conflicts or piece too much up, re-check for up
-                cpiece_pos[1]+=1
-                raise IndexError
+            for cube in piece_cubes:
+                piece_surface.blit(cube_surface, (cube[0] * self.CUBE_SIZE, cube[1] * self.CUBE_SIZE))
+            self.pieces_surfaces[piece_id] = piece_surface
 
-        except IndexError: # game over, verified until piece down
-            print("game over")
-            pygame.quit()
-            quit()
-    
+        self.screen = pygame.display.set_mode(self.SCREEN_SIZE)
+        self.clock = pygame.time.Clock()
 
-def add_cpiece_to_grid():
-    global cubes_w_cpiece
-    grid_w_cpiece_cache = grid.copy()
-    for cube in cpiece_cubes:
-        cube_pos = cpiece_pos[0]+cube[0], cpiece_pos[1]+cube[1]
+        pygame.mixer.init()
+        pygame.mixer.music.load("music.mp3")
+        pygame.mixer.music.play(loops=-1)
+        self.running = True
+        self.next_pieces = [random.choice(self.NPIECES) for _ in range(self.NUMBER_NEXT_PIECES)]
+        self.score = 0
+        self.empty_line = np.zeros((1, self.GRID_CUBE_SIZE[0]))
+        self.next_time_moving = time.time()
+        self.next_time_moving_h = 0
+        self.next_time_moving_v = 0
+        self.moving_h = 0
+        self.moving_v = 0
+        self.holded_piece = 0
+        self.lines = 0
+        self.level_old = 0
 
-        printd("condition", 0<=cube_pos[0])
-        printd("hello", cube_pos[0])
-        if not (0<=cube_pos[0]<GRID_CUBE_SIZE[0] and 0<=cube_pos[1]<GRID_CUBE_SIZE[1]): # verif if it cross limits
-            return False
-        # if not 0<=cube_pos[0]<10:
-        #     cpiece_pos[0] -= moving_h #cancel the move
-        if grid_w_cpiece_cache[flip_coords(*cube_pos)]: # conflicts ?
-            return False
-        grid_w_cpiece_cache[flip_coords(*cube_pos)] = cpiece_id
-    cubes_w_cpiece = grid_w_cpiece_cache
-    return True
-    
-def move_v(delta_v):
-    cpiece_pos[1] += delta_v
-    if not add_cpiece_to_grid(): # the piece finally placed
-        cpiece_pos[1] -= delta_v
-        
-        global moving_v
-        moving_v = 0
-        global grid
-        grid = cubes_w_cpiece
-        
-        #remove lines !
-        new_piece()
+        self.new_piece()
+        self.next_time_moving += self.speed_moving
+
+        self.grid_surface = pygame.Surface((self.GRID_CUBE_SIZE[0] * self.CUBE_SIZE, self.GRID_CUBE_SIZE[1] * self.CUBE_SIZE))
+        self.grid_surface.fill(self.GRID_COLOR)
+        for y in range(self.GRID_CUBE_SIZE[1]):
+            pygame.draw.line(
+                self.grid_surface,
+                self.CUBES_LIMIT_COLOR,
+                (0, y * self.CUBE_SIZE),
+                (self.GRID_CUBE_SIZE[0] * self.CUBE_SIZE, y * self.CUBE_SIZE),
+                1)
+        for x in range(self.GRID_CUBE_SIZE[0]):
+            pygame.draw.line(
+                self.grid_surface,
+                self.CUBES_LIMIT_COLOR,
+                (x * self.CUBE_SIZE, 0),
+                (x * self.CUBE_SIZE, self.GRID_CUBE_SIZE[1] * self.CUBE_SIZE),
+                1)
+
+    def flip_coords(self, x, y):
+        """convert UI coords to numpy coords"""
+        return y, x
+
+    def update_speed_moving(self):
+        if self.level <= 10:
+            self.speed_moving = 1 - 0.1 * (self.level - 1)
+        else:
+            self.speed_moving = 0.05
+
+    def new_piece(self, setup_cpiece_id=True):
+        self.lines_cleared_piece = 0
+        for nline in range(self.GRID_CUBE_SIZE[1]):
+            if np.all(self.grid[nline]):
+                self.grid = np.delete(self.grid, nline, axis=0)
+                self.grid = np.vstack((self.empty_line, self.grid))
+                self.lines_cleared_piece += 1
+
+        self.lines += self.lines_cleared_piece
+        self.level = self.lines // self.LINES_CLEARED_BY_LEVEL + 1
+        if self.level != self.level_old:
+            self.level_old = self.level
+            self.printd("LEVEL UP")
+            self.update_speed_moving()
+        self.score += self.CLEAR_LINES_POINTS[self.lines_cleared_piece]
+
+        if setup_cpiece_id:
+            self.cpiece_id = self.next_pieces.pop(0)
+            self.next_pieces.append(random.choice(self.NPIECES))
+            self.holded_used = False
+        self.cpiece_pos = [int(self.GRID_CUBE_SIZE[0]) // 2, 0]
+        self.cpiece_cubes = self.PIECES[self.cpiece_id]
+        self.holded_used = False
+
+        while True:
+            try:
+                if self.add_cpiece_to_grid():
+                    return
+                else:
+                    self.cpiece_pos[1] += 1
+                    raise IndexError
+
+            except IndexError:
+                print("game over")
+                pygame.quit()
+                quit()
+
+    def add_cpiece_to_grid(self):
+        self.grid_w_cpiece_cache = self.grid.copy()
+        for cube in self.cpiece_cubes:
+            cube_pos = self.cpiece_pos[0] + cube[0], self.cpiece_pos[1] + cube[1]
+
+            self.printd("condition", 0 <= cube_pos[0])
+            self.printd("hello", cube_pos[0])
+            if not (0 <= cube_pos[0] < self.GRID_CUBE_SIZE[0] and 0 <= cube_pos[1] < self.GRID_CUBE_SIZE[1]):
+                return False
+            if self.grid_w_cpiece_cache[self.flip_coords(*cube_pos)]:
+                return False
+            self.grid_w_cpiece_cache[self.flip_coords(*cube_pos)] = self.cpiece_id
+        self.cubes_w_cpiece = self.grid_w_cpiece_cache
         return True
 
-# def adjust_cpiece_pos():
-#     global cpiece_pos
-#     while True:
-#         cubes_pos = []
-#         for cube in cpiece_cubes:
-#             cube_pos = cpiece_pos[0]+cube[0], cpiece_pos[1]+cube[1]
-#             if cube_pos[0]<0:
-#                 cpiece_pos
-#     zpiece_cubes = tuple(zip(cpiece_cubes))
-#     cpiece_pos = (
-#         cpiece_pos[0] + min(zpiece_cubes[0]),
-#         cpiece_pos[1] + min(zpiece_cubes[1])
-#     )
-grid = np.zeros(flip_coords(*GRID_CUBE_SIZE))
-#cubes = array = np.random.randint(0, 5, size=GRID_CUBE_SIZE)
-cube_surfaces = {}
-pieces_surfaces = {}
-for piece_id, color in COLORS.items():
-    cube_surface = pygame.Surface((CUBE_SIZE, CUBE_SIZE))
-    cube_surface.fill(color)
-    cube_surfaces[piece_id] = cube_surface
-    
-    piece_cubes = PIECES[piece_id]
-    xs, ys = zip(*piece_cubes)
-    min_x, min_y = min(xs), min(ys)
-    x_dim, y_dim = max(xs)-min_x+1, max(ys)-min_y+1
-    piece_cubes = tuple((x-min_x,y-min_y) for x,y in piece_cubes)
-    pass
-    piece_size = (CUBE_SIZE*x_dim, CUBE_SIZE*y_dim)
-    piece_surface = pygame.Surface(piece_size,pygame.SRCALPHA)
-    piece_surface.fill((0,0,0,0))
-    
-    for cube in piece_cubes:
-        piece_surface.blit(cube_surface, (cube[0]*CUBE_SIZE, cube[1]*CUBE_SIZE))
-    pieces_surfaces[piece_id] = piece_surface
-    
-        
-    
+    def move_v(self, delta_v):
+        self.cpiece_pos[1] += delta_v
+        if not self.add_cpiece_to_grid():
+            self.cpiece_pos[1] -= delta_v
+            self.moving_v = 0
+            self.grid = self.cubes_w_cpiece
+            self.new_piece()
+            return True
 
+    def render(self, style, text):
+        return style[0].render(text, *style[1:])
 
+    def run(self):
+        while self.running:
+            self.screen.fill(self.SCREEN_COLOR)
+            self.screen.blit(self.grid_surface, self.GRID_POS)
 
-screen = pygame.display.set_mode(SCREEN_SIZE)
-clock = pygame.time.Clock()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
 
-pygame.mixer.init()
-pygame.mixer.music.load("music.mp3")
-pygame.mixer.music.play(loops=-1)
-running = True
-next_pieces = [random.choice(NPIECES) for _ in range(NUMBER_NEXT_PIECES)]
-if 1:
-    pass
-    #next_pieces[0] = 1
-score = 0
-empty_line = np.zeros((1,GRID_CUBE_SIZE[0]))
-next_time_moving = time.time()
-next_time_moving_h = 0
-next_time_moving_v = 0
-moving_h = 0
-moving_v = 0
-holded_piece = 0
-lines = 0
-level_old = 0
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        self.next_time_moving_h = time.time()
+                        self.moving_h = -1
+                    elif event.key == pygame.K_RIGHT:
+                        self.next_time_moving_h = time.time()
+                        self.moving_h = 1
+                    elif event.key == pygame.K_DOWN:
+                        self.next_time_moving_v = time.time()
+                        self.moving_v = 1
+                    elif event.key == pygame.K_UP:
+                        self.cpiece_cubes_backup = self.cpiece_cubes
+                        self.cpiece_cubes = tuple((cube[1], -cube[0]) for cube in self.cpiece_cubes)
+                        if not self.add_cpiece_to_grid():
+                            self.cpiece_cubes = self.cpiece_cubes_backup
+                    elif event.unicode == "c":
+                        if not self.holded_used:
+                            if self.holded_piece:
+                                self.cpiece_id, self.holded_piece = self.holded_piece, self.cpiece_id
+                                self.new_piece(setup_cpiece_id=False)
+                            else:
+                                self.holded_piece = self.cpiece_id
+                                self.new_piece()
+                            self.holded_used = True
+                    elif event.unicode == " ":
+                        while not self.move_v(1):
+                            self.score += 2
 
-new_piece()
-next_time_moving += speed_moving
-#adjust_cpiece_pos()
-# Create grid_surface
-grid_surface = pygame.Surface((GRID_CUBE_SIZE[0]*CUBE_SIZE, GRID_CUBE_SIZE[1]*CUBE_SIZE))
-grid_surface.fill(GRID_COLOR)
-for y in range(GRID_CUBE_SIZE[1]):
-    pygame.draw.line(
-        grid_surface,
-        CUBES_LIMIT_COLOR,
-        (0,y*CUBE_SIZE),
-        (GRID_CUBE_SIZE[0]*CUBE_SIZE,y*CUBE_SIZE),
-        1)
-for x in range(GRID_CUBE_SIZE[0]):
-    pygame.draw.line(
-        grid_surface,
-        CUBES_LIMIT_COLOR,
-        (x*CUBE_SIZE,0),
-        (x*CUBE_SIZE,GRID_CUBE_SIZE[1]*CUBE_SIZE),
-        1)
-while running:
-    screen.fill(SCREEN_COLOR)
-    screen.blit(grid_surface,GRID_POS)
-    
+                elif event.type == pygame.KEYUP:
+                    if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                        self.moving_h = 0
+                    elif event.key == pygame.K_DOWN:
+                        self.moving_v = 0
 
+            if time.time() > self.next_time_moving:
+                self.next_time_moving += self.speed_moving
+                self.move_v(1)
 
-        
-        # pygame.draw.line(
-        #     screen, 
-        #     "white", 
-        #     (GRID_POS[0],CUBE_SIZE*y+GRID_POS[1]), 
-        #     (GRID_POS[1]+GRID_CUBE_SIZE[1]*CUBE_SIZE,CUBE_SIZE*y+GRID_POS[1]), 
-        #     1)
+            if self.moving_h and time.time() > self.next_time_moving_h:
+                self.next_time_moving_h += self.DELAY_CONTROL_H
+                self.cpiece_pos[0] += self.moving_h
+                self.printd(self.cpiece_pos)
+                if not self.add_cpiece_to_grid():
+                    self.cpiece_pos[0] -= self.moving_h
+                    self.moving_h = 0
 
-    for event in pygame.event.get():
-        #printd(event)
-        if event.type == pygame.QUIT:
-            running=False
-            
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT:
-                next_time_moving_h = time.time()
-                moving_h = -1
-            elif event.key == pygame.K_RIGHT:
-                next_time_moving_h = time.time()
-                moving_h = 1
-            elif event.key == pygame.K_DOWN:
-                next_time_moving_v = time.time()
-                moving_v = 1
-            elif event.key == pygame.K_UP: # turn the piece
-                cpiece_cubes_backup = cpiece_cubes
-                cpiece_cubes = tuple((cube[1], -cube[0]) for cube in cpiece_cubes)
-                if not add_cpiece_to_grid():
-                    cpiece_cubes = cpiece_cubes_backup
-                pass
-            elif event.unicode == "c":
-                if not holded_used:
-                    if holded_piece:
-                        cpiece_id, holded_piece = holded_piece, cpiece_id
-                        new_piece(setup_cpiece_id=False)
-                    else:
-                        holded_piece = cpiece_id
-                        new_piece()
-                    holded_used = True
-            elif event.unicode == " ": # hard drop
-                while not move_v(1):
-                    score += 2
-                    
-        elif event.type == pygame.KEYUP:
-            if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                moving_h = 0
-                
-            elif event.key == pygame.K_DOWN:
-                moving_v = 0
+            if self.moving_v and time.time() > self.next_time_moving_v:
+                self.printd(self.next_time_moving_v)
+                self.next_time_moving_v += self.DELAY_CONTROL_V
+                self.move_v(self.moving_v)
+                self.score += self.moving_v
 
-    if time.time() > next_time_moving:
-        next_time_moving += speed_moving
-        move_v(1)
-        
-    if moving_h and time.time() > next_time_moving_h:
-        next_time_moving_h += DELAY_CONTROL_H
-        cpiece_pos[0] += moving_h
-        printd(cpiece_pos)
-        if not add_cpiece_to_grid():
-            cpiece_pos[0] -= moving_h # cancel the h move
-            #print("hello2")
-            moving_h = 0
-        
-    if moving_v and time.time() > next_time_moving_v: # soft drop
-        printd(next_time_moving_v)
-        next_time_moving_v += DELAY_CONTROL_V
-        #cpiece_pos[1] += moving_v
-        move_v(moving_v)
-        score += moving_v
-        
+            for y in range(self.GRID_CUBE_SIZE[1]):
+                for x in range(self.GRID_CUBE_SIZE[0]):
+                    piece_id = self.cubes_w_cpiece[self.flip_coords(x, y)]
+                    if piece_id != 0:
+                        cube_surface = self.cube_surfaces[piece_id]
+                        self.screen.blit(cube_surface, (self.CUBE_SIZE * x + self.GRID_POS[0], self.CUBE_SIZE * y + self.GRID_POS[1]))
 
-        
-    for y in range(GRID_CUBE_SIZE[1]):
-        for x in range(GRID_CUBE_SIZE[0]):
-            piece_id = cubes_w_cpiece[flip_coords(x,y)]
-            if piece_id != 0:
-                cube_surface = cube_surfaces[piece_id]
-                screen.blit(cube_surface, (CUBE_SIZE*x+GRID_POS[0], CUBE_SIZE*y+GRID_POS[1]))
-    
-    # DESIGN
-    surface_next = render(NEXT_STYLE,"Next")
-    y=NEXT_POS[1]
-    screen.blit(surface_next,NEXT_POS)
-    y+=surface_next.get_height()+NEXT_BETWEEN_TEXT_PIECES
-    
-    for next_piece in next_pieces:
-        piece_surface=pieces_surfaces[next_piece]
-        screen.blit(piece_surface, (NEXT_POS[0],y))
-        y+=CUBE_SIZE*2+NEXT_BETWEEN_PIECES
-        
-    surface_hold = render(SCORE_STYLE,"Hold")
-    y=HOLD_POS[1]
-    screen.blit(surface_hold, HOLD_POS)
-    if holded_piece:
-        y+=surface_hold.get_height()+HOLD_SPACE_TEXT_PIECES
-        piece_surface=pieces_surfaces[holded_piece]
-        screen.blit(piece_surface,(10,y))
-        
-    
-    y=SCORE_POS[1]
-    printd(y)
-    for text in (
-        f"Level: {level}",
-        f"Lines: {lines}",
-        f"Score: {score}",
-    ):
-        surface = render(HOLD_STYLE,text)
-        screen.blit(surface, surface.get_rect(bottomleft=(SCORE_POS[0],y)))
-        y-=surface.get_height()+SCORE_SPACE_PIECES
-    
-    
-    # score_text = f"Score: {score}"
-    # score_surface = pygame.font.Font(None, 24).render(score_text, True, "white")
-    # score_rect = score_surface.get_rect(topleft=(CUBE_SIZE*GRID_CUBE_SIZE[0],0))
-    # screen.blit(score_surface, score_rect)
-    
-    # level_text = f"Level: {level}"
-    # level_surface = pygame.font.Font(None, 24).render(level_text, True, "white")
-    # level_rect = level_surface.get_rect(topleft=(CUBE_SIZE*GRID_CUBE_SIZE[0],50))
-    # screen.blit(level_surface, level_rect)
-    
-    # lines_surface = pygame.font.Font(None, 24).render(f"Lines cleared: {lines_cleared_total}", True, "white")
-    # lines_rect = lines_surface.get_rect(topleft=(CUBE_SIZE*GRID_CUBE_SIZE[0],100))
-    # screen.blit(lines_surface, lines_rect)
+            surface_next = self.render(self.NEXT_STYLE, "Next")
+            y = self.NEXT_POS[1]
+            self.screen.blit(surface_next, self.NEXT_POS)
+            y += surface_next.get_height() + self.NEXT_BETWEEN_TEXT_PIECES
 
-    #screen.blit(pieces_surfaces[2],(0,0))
-    # SHOW NEXT PIECES
-    # for piece in next_pieces:
-    #     piece_surface = 
-    clock.tick(60) # fps
-    printd(next_pieces)
-    #printd("score",score,"level",level,"lines cleared total",lines_cleared_total, "speed moving",speed_moving)
-    #print("showed?")
-    pygame.display.flip()
-    
-            
-pygame.mixer.music.stop()
-pygame.quit()
-quit()
+            for next_piece in self.next_pieces:
+                piece_surface = self.pieces_surfaces[next_piece]
+                self.screen.blit(piece_surface, (self.NEXT_POS[0], y))
+                y += self.CUBE_SIZE * 2 + self.NEXT_BETWEEN_PIECES
+
+            surface_hold = self.render(self.SCORE_STYLE, "Hold")
+            y = self.HOLD_POS[1]
+            self.screen.blit(surface_hold, self.HOLD_POS)
+            if self.holded_piece:
+                y += surface_hold.get_height() + self.HOLD_SPACE_TEXT_PIECES
+                piece_surface = self.pieces_surfaces[self.holded_piece]
+                self.screen.blit(piece_surface, (10, y))
+
+            y = self.SCORE_POS[1]
+            self.printd(y)
+            for text in (
+                f"Level: {self.level}",
+                f"Lines: {self.lines}",
+                f"Score: {self.score}",
+            ):
+                surface = self.render(self.HOLD_STYLE, text)
+                self.screen.blit(surface, surface.get_rect(bottomleft=(self.SCORE_POS[0], y)))
+                y -= surface.get_height() + self.SCORE_SPACE_PIECES
+
+            self.clock.tick(60)
+            self.printd(self.next_pieces)
+            pygame.display.flip()
+
+        pygame.mixer.music.stop()
+        pygame.quit()
+        quit()
+
+if __name__ == "__main__":
+    game = TetrisGame()
+    game.run()
