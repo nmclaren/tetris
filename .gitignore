@@ -1,2 +1,10 @@
 .DS_Store
 ,idea
+.idea/misc.xml
+.idea/modules.xml
+.idea/tetris.iml
+.idea/vcs.xml
+.idea/dictionaries/nmclaren.xml
+.idea/inspectionProfiles/profiles_settings.xml
+*.pyc
+pieces/__pycache__/shapes.cpython-313.pyc
