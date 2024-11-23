@@ -149,9 +149,12 @@ def new_piece(setup_cpiece_id=True):
                 return
             else: # conflicts or piece too much up, re-check for up
                 cpiece_pos[1]+=1
+                raise IndexError
 
         except IndexError: # game over, verified until piece down
             print("game over")
+            pygame.quit()
+            quit()
     
 
 def add_cpiece_to_grid():
@@ -412,3 +415,4 @@ while running:
             
 pygame.mixer.music.stop()
 pygame.quit()
+quit()
