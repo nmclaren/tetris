@@ -3,7 +3,7 @@ import numpy as np
 import random
 import time
 import sys
-from pieces.shapes import PIECES
+from game.pieces.shapes import PIECES
 
 class TetrisGame:
     _instance = None

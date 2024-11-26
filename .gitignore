@@ -7,4 +7,5 @@
 .idea/dictionaries/nmclaren.xml
 .idea/inspectionProfiles/profiles_settings.xml
 *.pyc
-pieces/__pycache__/shapes.cpython-313.pyc
+game/pieces/__pycache__/shapes.cpython-313.pyc
+.idea/workspace.xml
